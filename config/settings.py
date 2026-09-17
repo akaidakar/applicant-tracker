@@ -78,13 +78,37 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        # On Fly the volume is mounted at /data so the data outlives deploys.
-        "NAME": os.environ.get("DATABASE_PATH", BASE_DIR / "db.sqlite3"),
+
+def database_from_url(url):
+    """Turn a postgres://user:pass@host/db?sslmode=require URL into a Django setting.
+
+    Vercel has no disk, so there the data lives in Neon Postgres and
+    DATABASE_URL points at it. Small enough to not need dj-database-url.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    parts = urlparse(url)
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": parts.path.lstrip("/"),
+        "USER": parts.username,
+        "PASSWORD": parts.password,
+        "HOST": parts.hostname,
+        "PORT": parts.port or 5432,
+        "OPTIONS": {k: v[0] for k, v in parse_qs(parts.query).items()},
     }
-}
+
+
+if os.environ.get("DATABASE_URL"):
+    DATABASES = {"default": database_from_url(os.environ["DATABASE_URL"])}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            # On Fly the volume is mounted at /data so the data outlives deploys.
+            "NAME": os.environ.get("DATABASE_PATH", BASE_DIR / "db.sqlite3"),
+        }
+    }
 
 
 # Password validation
@@ -132,6 +156,11 @@ STORAGES = {
 # (/assets/*.js, /favicon.svg) and config.spa serves index.html for routes.
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 WHITENOISE_ROOT = FRONTEND_DIST
+
+# On Vercel nothing runs collectstatic, so WhiteNoise finds the admin's files
+# in site-packages instead of STATIC_ROOT. The frontend is served by Vercel's
+# static layer there, not by Django.
+WHITENOISE_USE_FINDERS = os.environ.get("VERCEL") == "1"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
