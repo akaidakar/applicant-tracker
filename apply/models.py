@@ -39,12 +39,14 @@ class ApplicationManager(models.Manager):
         """Create an application at New with its first stage entry.
 
         Every code path that makes an application goes through here, so a row
-        never exists without the entry that `current_entry()` reads.
+        never exists without the entry that `current_entry()` reads. The
+        receipt is stamped with the moment of validation, as in the gist;
+        callers that backdate `submitted_at` pass a matching receipt.
         """
         with transaction.atomic():
             application = self.create(
                 submitted_at=submitted_at,
-                receipt=receipt or make_receipt(submitted_at),
+                receipt=receipt or make_receipt(),
                 stage=Stage.NEW,
                 **fields,
             )

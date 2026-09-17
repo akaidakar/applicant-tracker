@@ -260,7 +260,7 @@ class NoteAndHistoryTests(ApiTestCase):
         self.assertEqual(Note.objects.count(), 0)
 
     def test_note_on_application_without_entries_creates_one(self):
-        # A row made by hand in the admin or shell has no StageEntry yet.
+        # A row made by hand in the shell has no StageEntry yet.
         bare = Application.objects.create(
             name="Bare", email="bare@example.com", resume_link="https://x.io/r",
             repository_link="https://x.io/g", action_run_link="https://x.io/a",

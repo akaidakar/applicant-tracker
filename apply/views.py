@@ -16,7 +16,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Application, Stage, allowed_next_stages, make_receipt
+from .models import Application, Stage, allowed_next_stages
 from .serializers import (
     ApplicantSubmissionSerializer,
     ApplicationDetailSerializer,
@@ -105,9 +105,9 @@ class ApplicantSubmissionView(APIView):
                 "invalid_json", f"Request body must be valid UTF-8 encoded JSON: {e}"
             )
 
-        signature_error = verify_signature(request, payload)
-        if signature_error:
-            return signature_error
+        error = verify_signature(request, payload)
+        if error:
+            return error
 
         serializer = ApplicantSubmissionSerializer(data=payload)
         if not serializer.is_valid():
@@ -122,16 +122,8 @@ class ApplicantSubmissionView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        data = serializer.validated_data
-        application = Application.objects.submit(
-            name=data["name"],
-            email=data["email"],
-            resume_link=data["resume_link"],
-            repository_link=data["repository_link"],
-            action_run_link=data["action_run_link"],
-            submitted_at=data["timestamp"],
-            receipt=make_receipt(),
-        )
+        data = dict(serializer.validated_data)
+        application = Application.objects.submit(submitted_at=data.pop("timestamp"), **data)
 
         return Response({"success": True, "receipt": application.receipt})
 

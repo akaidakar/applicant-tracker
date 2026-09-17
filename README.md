@@ -72,7 +72,9 @@ Django doesn't own returns the React app's index.html.
 All `/api/` routes require a logged-in session and answer JSON. Every stage in a
 response is an object `{"value": "hired", "label": "Hired"}`, so clients don't
 need to hardcode labels for anything they display. Errors this app raises look
-like `{"success": false, "error": "<code>", "message": "<text>"}`. An unknown id
+like `{"success": false, "error": "<code>", "message": "<text>"}`. The
+submission endpoint's `validation_failed` error adds a `details` list naming
+each bad field, as in the gist. An unknown id
 or a request without a session gets DRF's `{"detail": "<text>"}` with 404 or 403.
 
 | Method | Path | Purpose |
