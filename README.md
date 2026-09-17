@@ -8,13 +8,13 @@ Task description: https://gist.github.com/marcua/fadc4c18b84171d9dfab221ba6c3662
 
 ## Live app
 
-https://applicant-tracker.fly.dev/
+https://applicant-tracker.vercel.app/
 
 Sign in with the reviewer account (credentials shared separately), then use
-the app. Django serves the API and the built frontend from one origin, so the
-network tab shows the real `/api/` requests and responses. The database is
-seeded with 100 fake applicants on first boot. Notes and stage changes you
-make stay there.
+the app. The API and the frontend share one origin, so the network tab shows
+the real `/api/` requests and responses. The database holds 100 seeded
+applicants. Notes and stage changes you make stay there. The first request
+after a quiet spell takes a second while the function starts.
 
 ## Run it locally
 
@@ -226,11 +226,13 @@ picker applies at once; the other filters apply on submit. Date filters send
 the start and end of the chosen day in the browser's zone, so "before 17 Sep"
 still includes 17 September.
 
-**Deployment.** One Fly.io machine runs gunicorn with the built frontend in
-the same image (`Dockerfile`, `fly.toml`). SQLite lives on a volume, so data
-survives deploys. On start the container migrates, creates the reviewer user
-from the `REVIEWER_PASSWORD` secret, and seeds 100 applicants if the table is
-empty. Postgres would replace SQLite before a second machine.
+**Deployment.** Two targets share the same code. On Vercel (`vercel.json`)
+the frontend is static and Django runs as a function. Vercel serves the
+built files itself, routes `/api`, `/admin`, `/static`, and `/submission` to
+Django, and every other path to the React app. A function has no disk, so
+`DATABASE_URL` points at Neon Postgres, and migrations run from a laptop
+against it. On Fly (`Dockerfile`, `fly.toml`) one machine runs gunicorn with
+SQLite on a volume and migrates and seeds itself on start.
 
 ## Layout
 
@@ -252,11 +254,27 @@ frontend/src/
   api/               http.ts (fetch client), errors.ts, index.ts
   pages/             ApplicationListPage, ApplicationDetailPage
   stages.ts          stage list, mirrors models.py
-Dockerfile, fly.toml Fly.io deployment
+vercel.json          Vercel: static frontend plus a Django function
+Dockerfile, fly.toml Fly.io: one container with SQLite on a volume
 .github/workflows/ci.yml   Django tests, frontend typecheck, lint, build
 ```
 
-Deploy:
+Deploy to Vercel:
+
+```sh
+vercel link
+vercel integration add neon                  # creates the database and sets DATABASE_URL
+for name in DJANGO_DEBUG DJANGO_ALLOWED_HOSTS CSRF_TRUSTED_ORIGINS \
+            DJANGO_SECRET_KEY APPLICANT_SIGNING_SECRET REVIEWER_PASSWORD; do
+  vercel env add $name production           # 0, .vercel.app, https://<project>.vercel.app, and three secrets
+done
+vercel env pull --environment production .env.production
+set -a; source .env.production; set +a
+python manage.py migrate && python manage.py ensure_reviewer && python manage.py seed_applications 100 --if-empty
+vercel deploy --prod
+```
+
+Deploy to Fly:
 
 ```sh
 fly launch --no-deploy --copy-config --yes   # first time only, creates the app and volume
