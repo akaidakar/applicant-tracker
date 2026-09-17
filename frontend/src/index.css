@@ -210,6 +210,37 @@ textarea:focus {
   }
 }
 
+/* Stage picker above the table. Applies at once; the form filters need Apply. */
+.stage-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tab {
+  font-family: Poppins, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  border-color: var(--b12-violet);
+  color: var(--b12-purple);
+}
+
+.tab.active {
+  background: var(--b12-purple);
+  border-color: var(--b12-purple);
+  color: #fff;
+}
+
 .btn {
   font-family: Poppins, sans-serif;
   font-size: 14px;
@@ -481,24 +512,3 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
-/* Demo banner (GitHub Pages build only) */
-.demo-banner {
-  background: var(--b12-lavender);
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
-}
-
-.demo-banner-inner {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: 10px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 13px;
-}

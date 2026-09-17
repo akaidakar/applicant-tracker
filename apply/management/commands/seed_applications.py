@@ -54,9 +54,16 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("count", nargs="?", type=int, default=100)
         parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible data.")
+        parser.add_argument(
+            "--if-empty", action="store_true",
+            help="Do nothing when applications already exist. Used on deploy start.",
+        )
 
     @transaction.atomic
-    def handle(self, count, seed, **options):
+    def handle(self, count, seed, if_empty, **options):
+        if if_empty and Application.objects.exists():
+            self.stdout.write("Applications exist; not seeding.")
+            return
         rng = random.Random(seed)
         now = timezone.now()
         for i in range(count):

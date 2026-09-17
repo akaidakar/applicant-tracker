@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:demo": "tsc -b && VITE_DEMO=1 VITE_BASE=/applicant-tracker/ vite build && cp dist/index.html dist/404.html",
     "typecheck": "tsc -b",
     "lint": "oxlint",
     "preview": "vite preview"

@@ -1,4 +1,4 @@
-# B12 applicant management
+# Applicant tracker
 
 The receiving side of the take-home: a Django app that validates signed
 application submissions, issues receipts, and lets recruiters move applicants
@@ -6,12 +6,15 @@ through a hiring pipeline. A React frontend sits on top of the API.
 
 Task description: https://gist.github.com/marcua/fadc4c18b84171d9dfab221ba6c36623
 
-**Live demo:** https://akaidakar.github.io/applicant-tracker/
+## Live app
 
-The demo is the real React app built against an in-browser copy of the API
-(`frontend/src/api/demo.ts`) with 100 seeded applicants, because GitHub Pages
-cannot run Django. Notes and stage changes persist in your browser until you
-press "Reset data". Everything else in this README describes the real stack.
+https://applicant-tracker.fly.dev/
+
+Sign in with the reviewer account (credentials shared separately), then use
+the app. Django serves the API and the built frontend from one origin, so the
+network tab shows the real `/api/` requests and responses. The database is
+seeded with 100 fake applicants on first boot. Notes and stage changes you
+make stay there.
 
 ## Run it locally
 
@@ -41,9 +44,21 @@ http://localhost:5173/. The Vite dev server proxies `/api`, `/admin`, and
 Tests:
 
 ```sh
-python manage.py test apply     # 33 tests
+python manage.py test apply     # 34 tests
 cd frontend && npm run typecheck && npm run lint
 ```
+
+Production-style, the way the container runs it:
+
+```sh
+cd frontend && npm run build && cd ..
+DJANGO_DEBUG=0 python manage.py migrate
+DJANGO_DEBUG=0 REVIEWER_PASSWORD=<choose one> python manage.py ensure_reviewer
+DJANGO_DEBUG=0 gunicorn config.wsgi:application
+```
+
+WhiteNoise serves the built frontend and the admin's static files. Any path
+Django doesn't own returns the React app's index.html.
 
 ## API
 
@@ -64,13 +79,14 @@ hardcode labels. Errors from this app look like
 ### List
 
 ```
-GET /api/applications?email=&receipt=&submitted_after=&submitted_before=&page=&page_size=
+GET /api/applications?email=&receipt=&stage=&submitted_after=&submitted_before=&page=&page_size=
 ```
 
-`email` and `receipt` match exactly. The date bounds are inclusive ISO 8601
-datetimes, and an unparseable value returns 400 `invalid_filter`. Results are
-newest first, 20 per page by default, 100 at most. Each row carries id, name,
-email, submitted_at, receipt, and stage.
+`email` and `receipt` match exactly, `stage` is one of the stage values. The
+date bounds are inclusive ISO 8601 datetimes. An unknown stage or an
+unparseable date returns 400 `invalid_filter`. Results are newest first, 20
+per page by default, 100 at most. Each row carries id, name, email,
+submitted_at, receipt, and stage.
 
 ```json
 {
@@ -167,8 +183,8 @@ happens in the same transaction as the new entry. The admin shows stage
 entries read-only, so the stage endpoint is the only writer and the two can't
 drift apart.
 
-`email` and `submitted_at` are indexed because the list filters and sorts on
-them. `receipt` is unique, which also indexes it.
+`email`, `stage`, and `submitted_at` are indexed because the list filters and
+sorts on them. `receipt` is unique, which also indexes it.
 
 ## Decisions
 
@@ -207,15 +223,16 @@ is already a column on the table.
 
 **Frontend stack.** Vite, React 19, TypeScript, `react-router-dom`, plain CSS,
 no data library. Two pages didn't justify TanStack Query. Filters and page
-number live in the URL, so the back button and shared links work. Date
-filters send the start and end of the chosen day in the browser's zone, so
-"before 17 Sep" still includes 17 September.
+number live in the URL, so the back button and shared links work. The stage
+picker applies at once; the other filters apply on submit. Date filters send
+the start and end of the chosen day in the browser's zone, so "before 17 Sep"
+still includes 17 September.
 
-**Demo mode.** `VITE_DEMO=1` swaps the HTTP client for `demo.ts`, which
-answers the same four calls from `frontend/src/demo/seed.json`. That file is
-the output of `python manage.py export_applications`, which serializes real
-rows with the real detail serializer, so the demo shows the exact API shape.
-The pages don't know which client they got.
+**Deployment.** One Fly.io machine runs gunicorn with the built frontend in
+the same image (`Dockerfile`, `fly.toml`). SQLite lives on a volume, so data
+survives deploys. On start the container migrates, creates the reviewer user
+from the `REVIEWER_PASSWORD` secret, and seeds 100 applicants if the table is
+empty. Postgres would replace SQLite before a second machine.
 
 ## Layout
 
@@ -228,14 +245,23 @@ apply/
   admin.py           browse and add notes; stage entries are read-only
   tests.py           33 API and model tests
   management/commands/
-    seed_applications.py    fake data for local use
-    export_applications.py  dump applications as JSON for the demo
+    seed_applications.py    fake data; --if-empty for the deploy
+    ensure_reviewer.py      the reviewer login, from a secret
+config/
+  settings.py        env-driven in production, WhiteNoise, SQLite path
+  spa.py             serves the built React app for non-API routes
 frontend/src/
-  api/               http.ts (real), demo.ts (in-browser), index.ts (picks one)
+  api/               http.ts (fetch client), errors.ts, index.ts
   pages/             ApplicationListPage, ApplicationDetailPage
-  stages.ts          stage list and order, mirrors models.py
-  demo/seed.json     100 seeded applicants for the demo build
-.github/workflows/
-  ci.yml             Django tests, frontend typecheck and lint
-  pages.yml          builds the demo and deploys it to GitHub Pages
+  stages.ts          stage list, mirrors models.py
+Dockerfile, fly.toml Fly.io deployment
+.github/workflows/ci.yml   Django tests, frontend typecheck, lint, build
+```
+
+Deploy:
+
+```sh
+fly launch --no-deploy --copy-config --yes   # first time only, creates the app and volume
+fly secrets set DJANGO_SECRET_KEY=... APPLICANT_SIGNING_SECRET=... REVIEWER_PASSWORD=...
+fly deploy
 ```

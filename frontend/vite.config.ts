@@ -6,8 +6,6 @@ import { defineConfig } from 'vite'
 const django = { target: 'http://localhost:8000', changeOrigin: true }
 
 export default defineConfig({
-  // GitHub Pages serves the demo from /<repo>/, so the build sets VITE_BASE.
-  base: process.env.VITE_BASE ?? '/',
   plugins: [react()],
   server: {
     proxy: {
