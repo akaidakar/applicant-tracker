@@ -1,8 +1,8 @@
 import hashlib
 import hmac
 import json
-import secrets
-from datetime import datetime, timezone
+import re
+from datetime import timezone
 
 from django.conf import settings
 from django.db import transaction
@@ -10,13 +10,13 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone as dj_timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Application, Stage, StageEntry, allowed_next_stages
+from .models import Application, Stage, StageEntry, allowed_next_stages, make_receipt
 from .serializers import (
     ApplicantSubmissionSerializer,
     ApplicationDetailSerializer,
@@ -34,11 +34,29 @@ def canonical_json(payload):
     return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
 
+def error_body(error, message):
+    """The gist's error shape. Every error from this app, 400 or 401, uses it."""
+    return {"success": False, "error": error, "message": message}
+
+
+def error_response(error, message, status_code=status.HTTP_400_BAD_REQUEST):
+    return Response(error_body(error, message), status=status_code)
+
+
+class BadRequest(APIException):
+    """Raised from get_queryset and pagination, where a Response can't be returned."""
+
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    def __init__(self, error, message):
+        self.detail = error_body(error, message)
+
+
 def signature_error(error, message):
-    return Response(
-        {"success": False, "error": error, "message": message},
-        status=status.HTTP_401_UNAUTHORIZED,
-    )
+    return error_response(error, message, status.HTTP_401_UNAUTHORIZED)
+
+
+HEX_DIGEST = re.compile(r"[0-9a-fA-F]{64}")
 
 
 def verify_signature(request, payload):
@@ -57,11 +75,9 @@ def verify_signature(request, payload):
             "X-Signature-256 header must be in format: sha256={hex-digest}",
         )
     provided = header[len("sha256="):]
-    try:
-        int(provided, 16)
-    except ValueError:
+    if not HEX_DIGEST.fullmatch(provided):
         return signature_error(
-            "invalid_signature_format", "Signature must be a valid hexadecimal string"
+            "invalid_signature_format", "Signature must be a 64-character hexadecimal string"
         )
     expected = hmac.new(
         settings.APPLICANT_SIGNING_SECRET.encode("utf-8"), canonical_json(payload), hashlib.sha256
@@ -75,11 +91,6 @@ def verify_signature(request, payload):
     return None
 
 
-def make_receipt():
-    now = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    return f"thank-you-from-b12-{now}-{secrets.token_hex(6)}"
-
-
 class ApplicantSubmissionView(APIView):
     # No session auth here: SessionAuthentication would enforce CSRF and the
     # GitHub Action's POST would fail with 403. The HMAC signature is the auth.
@@ -90,10 +101,7 @@ class ApplicantSubmissionView(APIView):
         try:
             payload = json.loads(request.body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
-            return Response(
-                {"success": False, "error": "invalid_json", "message": "Body must be valid JSON."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("invalid_json", "Body must be valid JSON.")
 
         signature_error = verify_signature(request, payload)
         if signature_error:
@@ -107,12 +115,8 @@ class ApplicantSubmissionView(APIView):
                 for error in errors
             ]
             return Response(
-                {
-                    "success": False,
-                    "error": "validation_failed",
-                    "message": "One or more fields failed validation",
-                    "details": details,
-                },
+                {**error_body("validation_failed", "One or more fields failed validation"),
+                 "details": details},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -135,18 +139,6 @@ class ApplicantSubmissionView(APIView):
 
 # Management API. Session auth and IsAuthenticated come from the DRF defaults
 # in settings.
-
-
-def error_response(error, message, status_code=status.HTTP_400_BAD_REQUEST):
-    return Response({"success": False, "error": error, "message": message}, status=status_code)
-
-
-class BadRequest(APIException):
-    status_code = status.HTTP_400_BAD_REQUEST
-
-    def __init__(self, error, message):
-        # Set detail directly so the body keeps the same shape as error_response.
-        self.detail = {"success": False, "error": error, "message": message}
 
 
 def parse_bound(params, name):
@@ -173,6 +165,14 @@ class ApplicationPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = "page_size"
     max_page_size = 100
+
+    def paginate_queryset(self, queryset, request, view=None):
+        # DRF answers a bad or out-of-range page with 404 {"detail": ...}.
+        # Keep this app's error shape instead.
+        try:
+            return super().paginate_queryset(queryset, request, view)
+        except NotFound:
+            raise BadRequest("invalid_page", "page must be a number within the result range.")
 
 
 class ApplicationListView(ListAPIView):
@@ -261,6 +261,8 @@ class StageChangeView(APIView):
             application.stage = new_stage
             application.save(update_fields=["stage"])
             StageEntry.objects.create(application=application, stage=new_stage)
+            # Read back while the row is still locked, so the response shows
+            # this move and not one a concurrent request made after it.
+            fresh = with_history(Application.objects.all()).get(pk=pk)
 
-        fresh = with_history(Application.objects.all()).get(pk=pk)
         return Response(ApplicationDetailSerializer(fresh).data)

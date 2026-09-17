@@ -44,7 +44,7 @@ http://localhost:5173/. The Vite dev server proxies `/api`, `/admin`, and
 Tests:
 
 ```sh
-python manage.py test apply     # 34 tests
+python manage.py test apply     # 37 tests
 cd frontend && npm run typecheck && npm run lint
 ```
 
@@ -141,7 +141,7 @@ POST /api/applications/42/notes   {"content": "Call went well."}
 ```
 
 Returns 201 with the note and the stage it was attached to. Blank content
-returns 400 `invalid_note`. Notes are allowed on final stages.
+returns 400 `invalid_note`. Notes are allowed on every stage, including Rejected.
 
 ### Stage change
 
@@ -153,6 +153,7 @@ Returns the updated application. An unknown stage returns 400
 `invalid_stage`. A move that is not forward returns 400 `invalid_transition`
 with a message naming the allowed stages, for example
 "Can't move from Interview scheduled to Phone screen scheduled. Allowed: Hired, Rejected."
+A bad or out-of-range `page` on the list returns 400 `invalid_page`.
 
 ### Submission
 
@@ -183,8 +184,10 @@ happens in the same transaction as the new entry. The admin shows stage
 entries read-only, so the stage endpoint is the only writer and the two can't
 drift apart.
 
-`email`, `stage`, and `submitted_at` are indexed because the list filters and
-sorts on them. `receipt` is unique, which also indexes it.
+`email` and `submitted_at` are indexed because the list filters on them. A
+composite index on `(stage, -submitted_at, -id)` matches the list's stage
+filter and newest-first sort, so that query is one index scan with no sort
+step. `receipt` is unique, which also indexes it.
 
 ## Decisions
 
@@ -200,10 +203,16 @@ Sending an applicant backwards returns 400 with the allowed stages named.
 in the detail response. The frontend builds its dropdown from that field, so it
 never re-derives the rule. The server still validates every request.
 
+**History orders by id, not date.** Stage entries sort in the order the moves
+were made. The date is for display, so seeded or hand-edited dates can't
+change which entry counts as current or where a new note attaches.
+
 **Concurrency.** The stage and note endpoints lock the application row with
 `select_for_update()` inside `transaction.atomic()`, so two concurrent moves
-can't both pass the check against the same old stage. SQLite ignores the lock
-but serializes writes; Postgres honors it.
+can't both pass the check against the same old stage. Postgres honors the
+lock. SQLite ignores it, so the SQLite connection opens every transaction
+in IMMEDIATE mode, which takes the write lock up front and makes the second
+request wait instead of failing with "database is locked".
 
 **Duplicate submissions create separate applications.** Email is not unique
 and each submission gets its own receipt. Idempotency by hashing the canonical
@@ -238,12 +247,12 @@ SQLite on a volume and migrates and seeds itself on start.
 
 ```
 apply/
-  models.py          Application, StageEntry, Note, allowed_next_stages()
+  models.py          Application, StageEntry, Note, allowed_next_stages(), make_receipt()
   serializers.py     list, detail, history, and input serializers
   views.py           submission view and the /api views
   api_urls.py        /api routes; urls.py keeps the gist's /submission
   admin.py           browse and add notes; stage entries are read-only
-  tests.py           33 API and model tests
+  tests.py           37 API and model tests
   management/commands/
     seed_applications.py    fake data; --if-empty for the deploy
     ensure_reviewer.py      the reviewer login, from a secret

@@ -3,18 +3,18 @@
 Each application gets a random submission date in the last 90 days, a random
 walk through the stages, one StageEntry per stage entered, and a few notes.
 Application.stage always equals the latest entry, the same invariant the
-stage endpoint keeps.
+stage endpoint keeps. No entry or note is dated later than now, so a move
+made in the app afterwards always comes last in the history.
 """
 
 import random
-import secrets
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from apply.models import STAGE_ORDER, Application, Note, Stage, StageEntry
+from apply.models import STAGE_ORDER, Application, Note, Stage, StageEntry, make_receipt
 
 FIRST_NAMES = ["Ada", "Grace", "Linus", "Margaret", "Dennis", "Barbara", "Ken", "Radia",
                "Guido", "Frances", "Tim", "Hedy", "Alan", "Katherine", "Donald", "Mary"]
@@ -29,11 +29,6 @@ NOTES = [
     "References checked.",
     "Needs more depth on databases.",
 ]
-
-
-def make_receipt(moment):
-    stamp = moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    return f"thank-you-from-b12-{stamp}-{secrets.token_hex(6)}"
 
 
 def random_path(rng):
@@ -83,9 +78,9 @@ class Command(BaseCommand):
                 for _ in range(rng.choice([0, 0, 1, 2])):
                     note = Note.objects.create(stage_entry=entry, content=rng.choice(NOTES))
                     Note.objects.filter(pk=note.pk).update(
-                        created_at=entered_at + timedelta(hours=rng.uniform(1, 48))
+                        created_at=min(entered_at + timedelta(hours=rng.uniform(1, 48)), now)
                     )
                 application.stage = stage
-                entered_at += timedelta(days=rng.uniform(1, 7))
+                entered_at = min(entered_at + timedelta(days=rng.uniform(1, 7)), now)
             application.save(update_fields=["stage"])
         self.stdout.write(self.style.SUCCESS(f"Created {count} applications."))

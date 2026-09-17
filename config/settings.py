@@ -13,20 +13,33 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY", "django-insecure-ms(q2d%m2)#mc*wqnwg0$l&2=06pqqzgz8(p6jg=*&n44et007"
-)
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+
+
+def secret(name, dev_default):
+    """A secret from the environment. The dev default only applies with DEBUG on.
+
+    With DEBUG off and the variable unset, refuse to start: a forgotten
+    DJANGO_SECRET_KEY would make every session forgeable, and a forgotten
+    APPLICANT_SIGNING_SECRET would let anyone submit an application.
+    """
+    value = os.environ.get(name)
+    if value:
+        return value
+    if DEBUG:
+        return dev_default
+    raise ImproperlyConfigured(f"{name} must be set when DJANGO_DEBUG=0.")
+
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = secret("DJANGO_SECRET_KEY", "django-insecure-dev-only-key")
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
@@ -107,6 +120,11 @@ else:
             "ENGINE": "django.db.backends.sqlite3",
             # On Fly the volume is mounted at /data so the data outlives deploys.
             "NAME": os.environ.get("DATABASE_PATH", BASE_DIR / "db.sqlite3"),
+            # SQLite ignores select_for_update(). With the default deferred
+            # transaction two gunicorn workers can both read the old stage and
+            # the second write fails with "database is locked". IMMEDIATE takes
+            # the write lock when atomic() opens, so the second waits instead.
+            "OPTIONS": {"transaction_mode": "IMMEDIATE"},
         }
     }
 
@@ -168,7 +186,7 @@ WHITENOISE_USE_FINDERS = os.environ.get("VERCEL") == "1"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # HMAC secret shared with the GitHub Action that POSTs submissions.
-APPLICANT_SIGNING_SECRET = os.environ.get("APPLICANT_SIGNING_SECRET", "dev-only-secret")
+APPLICANT_SIGNING_SECRET = secret("APPLICANT_SIGNING_SECRET", "dev-only-secret")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -191,3 +209,5 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Both hosts only serve HTTPS. A short max-age keeps a mistake recoverable.
+    SECURE_HSTS_SECONDS = 3600

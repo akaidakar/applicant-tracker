@@ -95,6 +95,13 @@ class SubmissionTests(APITestCase):
         response = self.post(payload, signature=sign(payload).upper().replace("SHA256=", "sha256="))
         self.assertEqual(response.status_code, 200, response.content)
 
+    def test_signature_must_be_a_64_char_hex_digest(self):
+        payload = submission_payload()
+        for bad in ["sha256=0x" + "a" * 62, "sha256=" + "a" * 63, "sha256=" + "a_a" * 21 + "a"]:
+            response = self.post(payload, signature=bad)
+            self.assertEqual(response.status_code, 401, bad)
+            self.assertEqual(response.json()["error"], "invalid_signature_format", bad)
+
     def test_invalid_json(self):
         response = self.client.post(
             "/submission", data="{not json", content_type="application/json",
@@ -190,7 +197,9 @@ class StageChangeTests(ApiTestCase):
         self.assert_stages(["new", "interview_scheduled"])
 
     def test_same_stage_rejected(self):
-        self.assertEqual(self.move("new").status_code, 400)
+        response = self.move("new")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "invalid_transition")
         self.assert_stages(["new"])
 
     def test_unknown_stage(self):
@@ -221,9 +230,25 @@ class NoteAndHistoryTests(ApiTestCase):
             [("new", ["Great take-home"]), ("phone_screen_scheduled", ["Call went well"])],
         )
 
-    def test_note_allowed_on_final_stage(self):
+    def test_note_allowed_on_rejected(self):
         self.move("rejected")
         self.assertEqual(self.note("Not enough depth").status_code, 201)
+
+    def test_future_dated_entry_does_not_stay_current(self):
+        # Seeded or hand-edited dates must not decide which entry is current;
+        # the order the moves were made does.
+        self.move("interview_scheduled")
+        StageEntry.objects.filter(application=self.app, stage="interview_scheduled").update(
+            entered_at=datetime(2099, 1, 1, tzinfo=timezone.utc)
+        )
+        self.move("rejected")
+        self.assertEqual(self.note("Reopened later").status_code, 201)
+
+        body = self.client.get(f"/api/applications/{self.app.id}/history").json()
+        self.assertEqual(
+            [(h["stage"]["value"], [n["content"] for n in h["notes"]]) for h in body["history"]],
+            [("new", []), ("interview_scheduled", []), ("rejected", ["Reopened later"])],
+        )
 
     def test_blank_note(self):
         response = self.note("   ")
@@ -327,6 +352,12 @@ class ListTests(ApiTestCase):
         self.assertIsNotNone(body["next"])
         page2 = self.client.get("/api/applications?page_size=2&page=2").json()
         self.assertEqual([r["id"] for r in page2["results"]], [self.older.id])
+
+    def test_bad_page_uses_the_app_error_shape(self):
+        for page in ["9", "zero"]:
+            response = self.client.get(f"/api/applications?page={page}")
+            self.assertEqual(response.status_code, 400, page)
+            self.assertEqual(response.json()["error"], "invalid_page", page)
 
 
 @override_settings(APPLICANT_SIGNING_SECRET=SECRET)
