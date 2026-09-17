@@ -188,14 +188,12 @@ sorts on them. `receipt` is unique, which also indexes it.
 
 ## Decisions
 
-**Forward-only stages, with two terminal stages.** The stage order is the order
-of the `Stage` choices: New, Phone screen scheduled, Interview scheduled,
-Hired, Rejected. A move is valid when the new stage comes later in that list,
-so skipping stages is fine and Rejected is reachable from any active stage.
-Hired and Rejected are final, so nothing moves out of them. This departs from
-the literal task text, under which Hired to Rejected would pass the order rule.
-Undoing a hire felt like a different operation than a pipeline step, and
-dropping that check is a one-line change in `allowed_next_stages()`.
+**Forward-only stages.** The stage order is the order of the `Stage` choices:
+New, Phone screen scheduled, Interview scheduled, Hired, Rejected. A move is
+valid when the new stage comes later in that list, as the task requires.
+Skipping stages is fine, Rejected is reachable from every other stage
+including Hired, and nothing leaves Rejected because nothing follows it.
+Sending an applicant backwards returns 400 with the allowed stages named.
 
 **One function holds the rule.** `allowed_next_stages(current)` in
 `apply/models.py` validates the stage endpoint and fills `allowed_next_stages`

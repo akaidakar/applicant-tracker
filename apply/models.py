@@ -11,17 +11,15 @@ class Stage(models.TextChoices):
 
 # The order of the choices is the order of the pipeline.
 STAGE_ORDER = list(Stage.values)
-TERMINAL = {Stage.HIRED, Stage.REJECTED}
 
 
 def allowed_next_stages(current):
-    """Stages an application may move to from `current`: any later stage, none from a terminal one.
+    """Stages an application may move to from `current`: every later one.
 
-    The stage endpoint validates with this and the detail response lists it,
-    so the rule lives in one place.
+    Moves only go forward, as the task requires. Rejected is last, so nothing
+    leaves it; Hired can still become Rejected. The stage endpoint validates
+    with this and the detail response lists it, so the rule lives in one place.
     """
-    if current in TERMINAL:
-        return []
     return STAGE_ORDER[STAGE_ORDER.index(current) + 1:]
 
 

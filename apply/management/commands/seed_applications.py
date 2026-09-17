@@ -14,7 +14,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from apply.models import STAGE_ORDER, TERMINAL, Application, Note, Stage, StageEntry
+from apply.models import STAGE_ORDER, Application, Note, Stage, StageEntry
 
 FIRST_NAMES = ["Ada", "Grace", "Linus", "Margaret", "Dennis", "Barbara", "Ken", "Radia",
                "Guido", "Frances", "Tim", "Hedy", "Alan", "Katherine", "Donald", "Mary"]
@@ -39,12 +39,8 @@ def make_receipt(moment):
 def random_path(rng):
     """A forward-only walk through the stages, sometimes skipping, sometimes ending early."""
     path = [Stage.NEW]
-    while path[-1] not in TERMINAL and rng.random() < 0.6:
-        later = STAGE_ORDER[STAGE_ORDER.index(path[-1]) + 1:]
-        nxt = rng.choice(later)
-        if nxt == Stage.REJECTED and path[-1] == Stage.HIRED:
-            break
-        path.append(nxt)
+    while path[-1] != Stage.REJECTED and rng.random() < 0.6:
+        path.append(rng.choice(STAGE_ORDER[STAGE_ORDER.index(path[-1]) + 1:]))
     return path
 
 

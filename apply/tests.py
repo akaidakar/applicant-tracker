@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from django.test import override_settings
 from rest_framework.test import APITestCase
 
-from .models import STAGE_ORDER, TERMINAL, Application, Note, Stage, StageEntry, allowed_next_stages
+from .models import STAGE_ORDER, Application, Note, Stage, StageEntry, allowed_next_stages
 
 SECRET = "test-secret"
 
@@ -37,16 +37,13 @@ class StageModelTests(APITestCase):
             ["new", "phone_screen_scheduled", "interview_scheduled", "hired", "rejected"],
         )
 
-    def test_terminal_stages(self):
-        self.assertEqual(TERMINAL, {Stage.HIRED, Stage.REJECTED})
-
     def test_allowed_next_stages(self):
         self.assertEqual(
             allowed_next_stages("new"),
             ["phone_screen_scheduled", "interview_scheduled", "hired", "rejected"],
         )
         self.assertEqual(allowed_next_stages("interview_scheduled"), ["hired", "rejected"])
-        self.assertEqual(allowed_next_stages("hired"), [])
+        self.assertEqual(allowed_next_stages("hired"), ["rejected"])
         self.assertEqual(allowed_next_stages("rejected"), [])
 
 
@@ -172,12 +169,18 @@ class StageChangeTests(ApiTestCase):
         self.assertEqual(self.move("rejected").status_code, 200)
         self.assert_stages(["new", "rejected"])
 
-    def test_hired_is_terminal(self):
+    def test_hired_can_become_rejected(self):
         self.move("hired")
-        response = self.move("rejected")
+        self.assertEqual(self.move("rejected").status_code, 200)
+        self.assert_stages(["new", "hired", "rejected"])
+
+    def test_rejected_is_final(self):
+        self.move("rejected")
+        response = self.move("hired")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "invalid_transition")
-        self.assert_stages(["new", "hired"])
+        self.assertIn("final stage", response.json()["message"])
+        self.assert_stages(["new", "rejected"])
 
     def test_backwards_rejected(self):
         self.move("interview_scheduled")
@@ -218,7 +221,7 @@ class NoteAndHistoryTests(ApiTestCase):
             [("new", ["Great take-home"]), ("phone_screen_scheduled", ["Call went well"])],
         )
 
-    def test_note_allowed_on_terminal_stage(self):
+    def test_note_allowed_on_final_stage(self):
         self.move("rejected")
         self.assertEqual(self.note("Not enough depth").status_code, 201)
 

@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { addNote, changeStage, getApplication } from '../api'
 import { ErrorBox, StageBadge } from '../components'
 import { formatDateTime } from '../format'
-import { TERMINAL } from '../stages'
+import { FINAL } from '../stages'
 import type { ApplicationDetail, StageValue } from '../types'
 
 type Loaded = { id: string; app?: ApplicationDetail; error?: Error }
@@ -53,10 +53,7 @@ export default function ApplicationDetailPage() {
     event.preventDefault()
     if (!app || !nextStage) return
     const label = app.allowed_next_stages.find((s) => s.value === nextStage)?.label
-    if (
-      TERMINAL.includes(nextStage) &&
-      !window.confirm(`Move ${app.name} to ${label}? This can't be undone.`)
-    ) {
+    if (nextStage === FINAL && !window.confirm(`Move ${app.name} to ${label}? This can't be undone.`)) {
       return
     }
     setStageBusy(true)
@@ -186,7 +183,7 @@ export default function ApplicationDetailPage() {
           <section className="card">
             <h2>Stage</h2>
             {app.allowed_next_stages.length === 0 ? (
-              <p className="muted">Final stage. No further moves.</p>
+              <p className="muted">Rejected is the final stage. No further moves.</p>
             ) : (
               <form onSubmit={submitStage} className="stack-sm">
                 <label>
