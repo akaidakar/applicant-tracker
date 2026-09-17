@@ -22,7 +22,7 @@ class ApplicationAdmin(admin.ModelAdmin):
     list_filter = ("stage",)
     search_fields = ("name", "email", "receipt")
     ordering = ("-submitted_at", "-id")
-    readonly_fields = ("receipt",)
+    readonly_fields = ("receipt", "stage")
     inlines = [StageEntryInline]
 
 
