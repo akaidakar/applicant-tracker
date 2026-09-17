@@ -4,8 +4,6 @@ The receiving side of the take-home: a Django app that validates signed
 application submissions, issues receipts, and lets recruiters move applicants
 through a hiring pipeline. A React frontend sits on top of the API.
 
-Task description: https://gist.github.com/marcua/fadc4c18b84171d9dfab221ba6c36623
-
 ## Live app
 
 https://applicant-tracker-six.vercel.app/
