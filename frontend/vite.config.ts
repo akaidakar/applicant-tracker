@@ -11,6 +11,8 @@ export default defineConfig({
     proxy: {
       '/api': django,
       '/admin': django,
+      // The submission tester page posts here.
+      '/submission': django,
       // The admin login page loads its CSS from here.
       '/static': django,
     },

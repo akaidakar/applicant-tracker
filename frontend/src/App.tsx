@@ -9,9 +9,14 @@ export default function App() {
             <span className="brand-mark">B12</span>
             <span className="brand-name">Applicants</span>
           </Link>
-          <a className="topbar-link" href="/admin/">
-            Admin
-          </a>
+          <nav className="topbar-links">
+            <Link className="topbar-link" to="/submit">
+              Test submission
+            </Link>
+            <a className="topbar-link" href="/admin/">
+              Admin
+            </a>
+          </nav>
         </div>
       </header>
       <main className="container">

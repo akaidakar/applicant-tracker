@@ -63,6 +63,27 @@ export function addNote(
   })
 }
 
+export type SubmissionResult = { status: number; body: unknown }
+
+// The gist's endpoint. No session, no CSRF, and every status code is a
+// result to show rather than an error to throw, so it bypasses request().
+export async function postSubmission(
+  rawBody: string,
+  signature: string | null,
+): Promise<SubmissionResult> {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  if (signature !== null) headers.set('X-Signature-256', signature)
+  const response = await fetch('/submission', { method: 'POST', headers, body: rawBody })
+  const text = await response.text()
+  let body: unknown = text
+  try {
+    body = JSON.parse(text)
+  } catch {
+    // Not JSON; show the text as is.
+  }
+  return { status: response.status, body }
+}
+
 export function changeStage(id: string | number, stage: StageValue): Promise<ApplicationDetail> {
   return request(`/api/applications/${id}/stage`, {
     method: 'POST',

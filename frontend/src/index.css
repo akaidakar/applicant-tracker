@@ -512,3 +512,74 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+
+/* Submission tester */
+.topbar-links {
+  display: flex;
+  gap: 18px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+pre.code {
+  margin: 0;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--b12-navy);
+  background: var(--b12-lavender);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+}
+
+.attempts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.attempt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.attempt.ok {
+  border-color: #9ed7b5;
+}
+
+.attempt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.status-ok {
+  color: #1a6b3d;
+  background: #e2f5ea;
+}
+
+.status-bad {
+  color: #9b2226;
+  background: #fbe4e4;
+}
