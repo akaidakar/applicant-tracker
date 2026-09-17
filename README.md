@@ -6,7 +6,7 @@ through a hiring pipeline. A React frontend sits on top of the API.
 
 Task description: https://gist.github.com/marcua/fadc4c18b84171d9dfab221ba6c36623
 
-**Live demo:** https://akaidakar.github.io/b12-recipient/
+**Live demo:** https://akaidakar.github.io/applicant-tracker/
 
 The demo is the real React app built against an in-browser copy of the API
 (`frontend/src/api/demo.ts`) with 100 seeded applicants, because GitHub Pages
