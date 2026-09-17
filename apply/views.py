@@ -186,6 +186,10 @@ class ApplicationListView(ListAPIView):
             queryset = queryset.filter(email=email)
         if receipt := params.get("receipt"):
             queryset = queryset.filter(receipt=receipt)
+        if stage := params.get("stage"):
+            if stage not in Stage.values:
+                raise BadRequest("invalid_filter", f"stage must be one of: {', '.join(Stage.values)}.")
+            queryset = queryset.filter(stage=stage)
         # Both bounds are inclusive.
         if after := parse_bound(params, "submitted_after"):
             queryset = queryset.filter(submitted_at__gte=after)

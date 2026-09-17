@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { listApplications } from '../api'
 import { ErrorBox, StageBadge } from '../components'
 import { dayBoundary, formatDateTime } from '../format'
-import type { ApplicationSummary, Page } from '../types'
+import { STAGES } from '../stages'
+import type { ApplicationSummary, Page, StageValue } from '../types'
 
 const PAGE_SIZE = 20
 
@@ -26,6 +27,7 @@ export default function ApplicationListPage() {
   const navigate = useNavigate()
   const page = Math.max(1, Number(searchParams.get('page')) || 1)
   const applied = filtersFrom(searchParams)
+  const stage = (searchParams.get('stage') as StageValue | null) ?? ''
 
   const queryKey = searchParams.toString()
   // The result remembers which query it answers, so "loading" is derived:
@@ -42,6 +44,7 @@ export default function ApplicationListPage() {
     listApplications({
       email: params.get('email') ?? undefined,
       receipt: params.get('receipt') ?? undefined,
+      stage: (params.get('stage') as StageValue | null) ?? undefined,
       submitted_after: dayBoundary(params.get('after') ?? '', 'start'),
       submitted_before: dayBoundary(params.get('before') ?? '', 'end'),
       page: Math.max(1, Number(params.get('page')) || 1),
@@ -60,10 +63,19 @@ export default function ApplicationListPage() {
 
   function applyFilters(filters: Filters) {
     const next = new URLSearchParams()
+    if (stage) next.set('stage', stage)
     for (const [key, value] of Object.entries(filters)) {
       if (value.trim()) next.set(key, value.trim())
     }
     setSearchParams(next) // no page param, so back to page 1
+  }
+
+  function pickStage(value: StageValue | '') {
+    const next = new URLSearchParams(searchParams)
+    next.delete('page')
+    if (value) next.set('stage', value)
+    else next.delete('stage')
+    setSearchParams(next)
   }
 
   function clearFilters() {
@@ -81,7 +93,7 @@ export default function ApplicationListPage() {
   }
 
   const totalPages = data ? Math.max(1, Math.ceil(data.count / PAGE_SIZE)) : 1
-  const hasFilters = Object.values(applied).some(Boolean)
+  const hasFilters = Boolean(stage) || Object.values(applied).some(Boolean)
 
   return (
     <>
@@ -100,6 +112,26 @@ export default function ApplicationListPage() {
         onApply={applyFilters}
         onClear={hasFilters ? clearFilters : undefined}
       />
+
+      <div className="stage-tabs" role="group" aria-label="Filter by stage">
+        <button
+          type="button"
+          className={stage === '' ? 'tab active' : 'tab'}
+          onClick={() => pickStage('')}
+        >
+          All stages
+        </button>
+        {STAGES.map((s) => (
+          <button
+            key={s.value}
+            type="button"
+            className={stage === s.value ? 'tab active' : 'tab'}
+            onClick={() => pickStage(s.value)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
 
       {error && <ErrorBox error={error} />}
 

@@ -302,6 +302,16 @@ class ListTests(ApiTestCase):
         )
         self.assertEqual(self.ids(response), [self.newer.id, self.app.id])
 
+    def test_filter_stage(self):
+        self.move("hired", app=self.newer)
+        self.assertEqual(self.ids(self.client.get("/api/applications?stage=hired")), [self.newer.id])
+        self.assertEqual(
+            self.ids(self.client.get("/api/applications?stage=new")), [self.app.id, self.older.id]
+        )
+        response = self.client.get("/api/applications?stage=promoted")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "invalid_filter")
+
     def test_bad_date(self):
         response = self.client.get("/api/applications?submitted_after=yesterday")
         self.assertEqual(response.status_code, 400)

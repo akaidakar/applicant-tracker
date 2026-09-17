@@ -48,6 +48,7 @@ export type ApplicationDetail = ApplicationSummary & {
 export type ListParams = {
   email?: string
   receipt?: string
+  stage?: StageValue
   submitted_after?: string
   submitted_before?: string
   page?: number

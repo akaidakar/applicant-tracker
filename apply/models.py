@@ -35,7 +35,9 @@ class Application(models.Model):
     receipt = models.CharField(max_length=100, unique=True)
     # Duplicates the latest StageEntry so stage checks and filters need no
     # subquery. Written only inside the same transaction as the new entry.
-    stage = models.CharField(max_length=32, choices=Stage.choices, default=Stage.NEW)
+    stage = models.CharField(
+        max_length=32, choices=Stage.choices, default=Stage.NEW, db_index=True
+    )
 
     def __str__(self):
         return f"{self.name} <{self.email}> ({self.receipt})"
