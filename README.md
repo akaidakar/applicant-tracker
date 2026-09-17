@@ -8,7 +8,7 @@ Task description: https://gist.github.com/marcua/fadc4c18b84171d9dfab221ba6c3662
 
 ## Live app
 
-https://applicant-tracker.vercel.app/
+https://applicant-tracker-six.vercel.app/
 
 Sign in with the reviewer account (credentials shared separately), then use
 the app. The API and the frontend share one origin, so the network tab shows
