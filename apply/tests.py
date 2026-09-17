@@ -116,6 +116,13 @@ class SubmissionTests(APITestCase):
         self.assertEqual(response.json()["error"], "validation_failed")
         self.assertEqual(Application.objects.count(), 0)
 
+    def test_validation_details_keep_the_gists_messages(self):
+        payload = submission_payload(resume_link="not a url")
+        del payload["name"]
+        details = self.post(payload).json()["details"]
+        self.assertIn("name: name is required", details)
+        self.assertIn("resume_link: resume_link must be a valid URL", details)
+
     def test_duplicate_submission_creates_second_application(self):
         self.post(submission_payload())
         response = self.post(submission_payload())
@@ -125,7 +132,7 @@ class SubmissionTests(APITestCase):
 
 
 def make_application(n=1, submitted_at=None, **fields):
-    application = Application.objects.create(
+    return Application.objects.submit(
         name=fields.get("name", f"Applicant {n}"),
         email=fields.get("email", f"applicant{n}@example.com"),
         resume_link="https://example.com/resume.pdf",
@@ -133,10 +140,7 @@ def make_application(n=1, submitted_at=None, **fields):
         action_run_link="https://github.com/x/y/actions/runs/1",
         submitted_at=submitted_at or datetime(2026, 9, 1, 12, tzinfo=timezone.utc),
         receipt=fields.get("receipt", f"thank-you-from-b12-test-{n}"),
-        stage=Stage.NEW,
     )
-    application.enter_stage(Stage.NEW)
-    return application
 
 
 class ApiTestCase(APITestCase):
@@ -391,6 +395,16 @@ class AdminTests(APITestCase):
         for app in apps:
             self.assertTrue(app.receipt.startswith("thank-you-from-b12-"))
             self.assertEqual(list(app.stage_entries.values_list("stage", flat=True)), ["new"])
+
+    def test_stage_entries_cannot_be_deleted(self):
+        # Deleting the latest entry would leave Application.stage ahead of
+        # the history, and the next note would land under the wrong stage.
+        self.client.force_login(User.objects.create_superuser("admin", password="pw"))
+        application = make_application()
+        entry = application.enter_stage(Stage.HIRED)
+        response = self.client.post(f"/admin/apply/stageentry/{entry.pk}/delete/", {"post": "yes"})
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(StageEntry.objects.filter(pk=entry.pk).exists())
 
 
 @override_settings(APPLICANT_SIGNING_SECRET=SECRET)

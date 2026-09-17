@@ -14,7 +14,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from apply.models import STAGE_ORDER, Application, Note, Stage, StageEntry, make_receipt
+from apply.models import STAGE_ORDER, Application, Note, Stage, StageEntry
 
 FIRST_NAMES = ["Ada", "Grace", "Linus", "Margaret", "Dennis", "Barbara", "Ken", "Radia",
                "Guido", "Frances", "Tim", "Hedy", "Alan", "Katherine", "Donald", "Mary"]
@@ -61,14 +61,13 @@ class Command(BaseCommand):
             first, last = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
             slug = f"{first}.{last}".lower().replace(" ", "")
             submitted_at = now - timedelta(days=rng.uniform(0, 90))
-            application = Application.objects.create(
+            application = Application.objects.submit(
                 name=f"{first} {last}",
                 email=f"{slug}{i}@example.com",
                 resume_link=f"https://example.com/resumes/{slug}.pdf",
                 repository_link=f"https://github.com/{slug}/application-submitter",
                 action_run_link=f"https://github.com/{slug}/application-submitter/actions/runs/{1000 + i}",
                 submitted_at=submitted_at,
-                receipt=make_receipt(submitted_at),
             )
             entered_at = submitted_at
             for stage in random_path(rng):

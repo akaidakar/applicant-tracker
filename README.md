@@ -51,7 +51,7 @@ http://localhost:5173/. The Vite dev server proxies `/api`, `/admin`, and
 Tests:
 
 ```sh
-python manage.py test apply     # 40 tests
+python manage.py test apply     # 42 tests
 cd frontend && npm run typecheck && npm run lint
 ```
 
@@ -71,8 +71,9 @@ Django doesn't own returns the React app's index.html.
 
 All `/api/` routes require a logged-in session and answer JSON. Every stage in a
 response is an object `{"value": "hired", "label": "Hired"}`, so clients don't
-need to hardcode labels for anything they display. Errors from this app look like
-`{"success": false, "error": "<code>", "message": "<text>"}`.
+need to hardcode labels for anything they display. Errors this app raises look
+like `{"success": false, "error": "<code>", "message": "<text>"}`. An unknown id
+or a request without a session gets DRF's `{"detail": "<text>"}` with 404 or 403.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -188,12 +189,14 @@ groups them with no extra bookkeeping and a note taken at "New" stays under
 "New" after a move.
 
 `Application.stage` duplicates the latest entry on purpose. Stage checks and
-list filters read one column instead of a subquery. `Application.enter_stage()`
-is the only code that writes the column, and it creates the entry in the same
-statement sequence. The submission endpoint, the stage endpoint, the admin's
-add form, the seed command, and the notes endpoint's fallback for a row with
-no entries all call it. The admin shows stage entries read-only, so nothing
-else can make the two drift apart.
+list filters read one column instead of a subquery. `Application.objects.submit()`
+creates a row at New together with its first entry, and `Application.enter_stage()`
+is the only code that changes the column afterwards, creating the entry in the
+same transaction. The submission endpoint, the seed command, and the tests use
+`submit()`. The stage endpoint, the admin's add form, and the notes endpoint's
+fallback for a row with no entries use `enter_stage()`. The admin shows stage
+entries read-only and blocks deleting them, so nothing else can make the two
+drift apart.
 
 Indexes match the list's queries. `(-submitted_at, -id)` is the unfiltered
 newest-first sort, `(stage, -submitted_at, -id)` is the same sort with the
@@ -262,7 +265,7 @@ apply/
   views.py           submission view and the /api views
   api_urls.py        /api routes; urls.py keeps the gist's /submission
   admin.py           browse and add notes; stage entries are read-only
-  tests.py           37 API and model tests
+  tests.py           API and model tests
   management/commands/
     seed_applications.py    fake data; --if-empty for the deploy
     ensure_reviewer.py      the reviewer login, from a secret

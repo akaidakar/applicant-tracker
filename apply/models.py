@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime, timezone
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models.functions import Upper
 
 
@@ -34,7 +34,27 @@ def make_receipt(moment=None):
     return f"thank-you-from-b12-{stamp.replace('+00:00', 'Z')}-{secrets.token_hex(6)}"
 
 
+class ApplicationManager(models.Manager):
+    def submit(self, *, submitted_at, receipt=None, **fields):
+        """Create an application at New with its first stage entry.
+
+        Every code path that makes an application goes through here, so a row
+        never exists without the entry that `current_entry()` reads.
+        """
+        with transaction.atomic():
+            application = self.create(
+                submitted_at=submitted_at,
+                receipt=receipt or make_receipt(submitted_at),
+                stage=Stage.NEW,
+                **fields,
+            )
+            application.enter_stage(Stage.NEW)
+        return application
+
+
 class Application(models.Model):
+    objects = ApplicationManager()
+
     name = models.CharField(max_length=255)
     email = models.EmailField()
     resume_link = models.URLField()
@@ -43,7 +63,8 @@ class Application(models.Model):
     submitted_at = models.DateTimeField()  # payload timestamp
     receipt = models.CharField(max_length=100, unique=True)
     # Duplicates the latest StageEntry so stage checks and filters need no
-    # subquery. `enter_stage()` is the only writer, so the two can't drift.
+    # subquery. `objects.submit()` sets it at New and `enter_stage()` is the
+    # only later writer, so the two can't drift.
     stage = models.CharField(max_length=32, choices=Stage.choices, default=Stage.NEW)
 
     class Meta:
@@ -64,7 +85,7 @@ class Application(models.Model):
     def enter_stage(self, stage):
         """Record that the applicant is now at `stage` and return the new entry.
 
-        The only place that writes `stage` or creates a StageEntry. Callers
+        The only place that changes `stage` or creates a StageEntry. Callers
         validate the transition first and hold the row lock when it matters.
         The column is saved only when it changes, so entering the stage a
         fresh row already has costs one INSERT.

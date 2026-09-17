@@ -100,8 +100,10 @@ class ApplicantSubmissionView(APIView):
     def post(self, request):
         try:
             payload = json.loads(request.body.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
-            return error_response("invalid_json", "Body must be valid JSON.")
+        except (UnicodeDecodeError, ValueError) as e:
+            return error_response(
+                "invalid_json", f"Request body must be valid UTF-8 encoded JSON: {e}"
+            )
 
         signature_error = verify_signature(request, payload)
         if signature_error:
@@ -121,18 +123,15 @@ class ApplicantSubmissionView(APIView):
             )
 
         data = serializer.validated_data
-        with transaction.atomic():
-            application = Application.objects.create(
-                name=data["name"],
-                email=data["email"],
-                resume_link=data["resume_link"],
-                repository_link=data["repository_link"],
-                action_run_link=data["action_run_link"],
-                submitted_at=data["timestamp"],
-                receipt=make_receipt(),
-                stage=Stage.NEW,
-            )
-            application.enter_stage(Stage.NEW)
+        application = Application.objects.submit(
+            name=data["name"],
+            email=data["email"],
+            resume_link=data["resume_link"],
+            repository_link=data["repository_link"],
+            action_run_link=data["action_run_link"],
+            submitted_at=data["timestamp"],
+            receipt=make_receipt(),
+        )
 
         return Response({"success": True, "receipt": application.receipt})
 

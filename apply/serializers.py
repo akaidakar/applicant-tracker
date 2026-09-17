@@ -4,12 +4,45 @@ from .models import Application, Note, Stage, StageEntry, allowed_next_stages
 
 
 class ApplicantSubmissionSerializer(serializers.Serializer):
-    timestamp = serializers.DateTimeField()
-    name = serializers.CharField()
-    email = serializers.EmailField()
-    resume_link = serializers.URLField()
-    repository_link = serializers.URLField()
-    action_run_link = serializers.URLField()
+    """The gist's field rules and messages, kept so a submitter's error handling still matches."""
+
+    timestamp = serializers.DateTimeField(
+        error_messages={
+            "required": "timestamp is required",
+            "invalid": "timestamp must be a valid ISO 8601 datetime (e.g., 2026-01-06T16:59:37.571Z)",
+        },
+    )
+    name = serializers.CharField(
+        error_messages={"required": "name is required", "blank": "name cannot be blank"},
+    )
+    email = serializers.EmailField(
+        error_messages={
+            "required": "email is required",
+            "invalid": "email must be a valid email address",
+            "blank": "email cannot be blank",
+        },
+    )
+    resume_link = serializers.URLField(
+        error_messages={
+            "required": "resume_link is required",
+            "invalid": "resume_link must be a valid URL",
+            "blank": "resume_link cannot be blank",
+        },
+    )
+    repository_link = serializers.URLField(
+        error_messages={
+            "required": "repository_link is required",
+            "invalid": "repository_link must be a valid URL (e.g., https://github.com/user/repo)",
+            "blank": "repository_link cannot be blank",
+        },
+    )
+    action_run_link = serializers.URLField(
+        error_messages={
+            "required": "action_run_link is required",
+            "invalid": "action_run_link must be a valid URL (e.g., https://github.com/user/repo/actions/runs/123)",
+            "blank": "action_run_link cannot be blank",
+        },
+    )
 
 
 class StageField(serializers.Field):

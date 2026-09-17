@@ -57,6 +57,12 @@ class StageEntryAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
+    def has_delete_permission(self, request, obj=None):
+        # Deleting the latest entry would leave Application.stage pointing at
+        # a stage the history no longer has, and the next note would attach
+        # to the wrong entry.
+        return False
+
 
 @admin.register(Note)
 class NoteAdmin(admin.ModelAdmin):

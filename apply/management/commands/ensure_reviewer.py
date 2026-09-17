@@ -1,6 +1,6 @@
 """Create or update the staff login the reviewer uses on the deployed app.
 
-Runs on every start so a redeploy can rotate the password from the
+Run it after a deploy to set or rotate the password from the
 REVIEWER_PASSWORD secret. Does nothing when the secret is unset.
 """
 
