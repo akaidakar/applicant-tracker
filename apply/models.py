@@ -2,6 +2,7 @@ import secrets
 from datetime import datetime, timezone
 
 from django.db import models
+from django.db.models.functions import Upper
 
 
 class Stage(models.TextChoices):
@@ -35,36 +36,53 @@ def make_receipt(moment=None):
 
 class Application(models.Model):
     name = models.CharField(max_length=255)
-    email = models.EmailField(db_index=True)
+    email = models.EmailField()
     resume_link = models.URLField()
     repository_link = models.URLField()
     action_run_link = models.URLField()
-    submitted_at = models.DateTimeField(db_index=True)  # payload timestamp
+    submitted_at = models.DateTimeField()  # payload timestamp
     receipt = models.CharField(max_length=100, unique=True)
     # Duplicates the latest StageEntry so stage checks and filters need no
-    # subquery. Written only inside the same transaction as the new entry.
+    # subquery. `enter_stage()` is the only writer, so the two can't drift.
     stage = models.CharField(max_length=32, choices=Stage.choices, default=Stage.NEW)
 
     class Meta:
         indexes = [
-            # The list page filters by stage and sorts newest first. One index
-            # serves both, and a stage-only filter uses its leading column.
+            # The list sorts newest first: ORDER BY submitted_at DESC, id DESC.
+            # Both columns are in the index so Postgres needs no sort step.
+            models.Index(fields=["-submitted_at", "-id"], name="apply_app_newest_idx"),
+            # The same sort with a stage filter in front of it.
             models.Index(fields=["stage", "-submitted_at", "-id"], name="apply_app_stage_newest_idx"),
+            # The email filter is case-insensitive. Postgres compiles iexact
+            # to UPPER(email) = UPPER(%s), which this index serves.
+            models.Index(Upper("email"), name="apply_app_email_upper_idx"),
         ]
 
     def __str__(self):
         return f"{self.name} <{self.email}> ({self.receipt})"
 
+    def enter_stage(self, stage):
+        """Record that the applicant is now at `stage` and return the new entry.
+
+        The only place that writes `stage` or creates a StageEntry. Callers
+        validate the transition first and hold the row lock when it matters.
+        The column is saved only when it changes, so entering the stage a
+        fresh row already has costs one INSERT.
+        """
+        if self.stage != stage:
+            self.stage = stage
+            self.save(update_fields=["stage"])
+        return self.stage_entries.create(stage=stage)
+
     def current_entry(self):
         """The StageEntry for the current stage.
 
-        Every code path that sets `stage` also creates an entry, but a row made
-        by hand (admin, shell) may have none. Create it then, so a note always
-        has a stage to attach to.
+        A row made by hand in the shell may have none. Create it then, so a
+        note always has a stage to attach to.
         """
         entry = self.stage_entries.order_by("-id").first()
         if entry is None:
-            entry = self.stage_entries.create(stage=self.stage)
+            entry = self.enter_stage(self.stage)
         return entry
 
 

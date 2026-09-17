@@ -2,8 +2,8 @@
 
 Each application gets a random submission date in the last 90 days, a random
 walk through the stages, one StageEntry per stage entered, and a few notes.
-Application.stage always equals the latest entry, the same invariant the
-stage endpoint keeps. No entry or note is dated later than now, so a move
+Every stage goes through `Application.enter_stage()`, so Application.stage
+always equals the latest entry. No entry or note is dated later than now, so a move
 made in the app afterwards always comes last in the history.
 """
 
@@ -72,7 +72,7 @@ class Command(BaseCommand):
             )
             entered_at = submitted_at
             for stage in random_path(rng):
-                entry = StageEntry.objects.create(application=application, stage=stage)
+                entry = application.enter_stage(stage)
                 # auto_now_add ignores a passed value, so backdate after creating.
                 StageEntry.objects.filter(pk=entry.pk).update(entered_at=entered_at)
                 for _ in range(rng.choice([0, 0, 1, 2])):
@@ -80,7 +80,5 @@ class Command(BaseCommand):
                     Note.objects.filter(pk=note.pk).update(
                         created_at=min(entered_at + timedelta(hours=rng.uniform(1, 48)), now)
                     )
-                application.stage = stage
                 entered_at = min(entered_at + timedelta(days=rng.uniform(1, 7)), now)
-            application.save(update_fields=["stage"])
         self.stdout.write(self.style.SUCCESS(f"Created {count} applications."))

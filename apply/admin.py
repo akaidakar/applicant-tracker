@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Application, Note, StageEntry
+from .models import Application, Note, StageEntry, make_receipt
 
 
 class NoteInline(admin.TabularInline):
@@ -10,8 +10,8 @@ class NoteInline(admin.TabularInline):
 
 
 class StageEntryInline(admin.TabularInline):
-    """Read-only: the stage endpoint is the only writer, so Application.stage
-    and the entries can't drift apart."""
+    """Read-only: `Application.enter_stage()` is the only writer, so
+    Application.stage and the entries can't drift apart."""
 
     model = StageEntry
     extra = 0
@@ -32,6 +32,17 @@ class ApplicationAdmin(admin.ModelAdmin):
     ordering = ("-submitted_at", "-id")
     readonly_fields = ("receipt", "stage")
     inlines = [StageEntryInline]
+
+    def save_model(self, request, obj, form, change):
+        # The add form can't fill the read-only fields. Without this the row
+        # saves with an empty receipt, and the second one hits the unique
+        # constraint. Issue a receipt and the first stage entry like the
+        # submission endpoint does.
+        if not obj.receipt:
+            obj.receipt = make_receipt(obj.submitted_at)
+        super().save_model(request, obj, form, change)
+        if not change:
+            obj.enter_stage(obj.stage)
 
 
 @admin.register(StageEntry)

@@ -135,7 +135,7 @@ def make_application(n=1, submitted_at=None, **fields):
         receipt=fields.get("receipt", f"thank-you-from-b12-test-{n}"),
         stage=Stage.NEW,
     )
-    StageEntry.objects.create(application=application, stage=Stage.NEW)
+    application.enter_stage(Stage.NEW)
     return application
 
 
@@ -323,12 +323,23 @@ class ListTests(ApiTestCase):
             self.ids(self.client.get(f"/api/applications?receipt={self.newer.receipt}")), [self.newer.id]
         )
 
+    def test_email_filter_ignores_case(self):
+        self.assertEqual(self.ids(self.client.get("/api/applications?email=Old@Example.COM")), [self.older.id])
+
     def test_date_bounds_are_inclusive(self):
         response = self.client.get(
             "/api/applications",
             {"submitted_after": "2026-09-01T12:00:00Z", "submitted_before": "2026-09-10T09:00:00Z"},
         )
         self.assertEqual(self.ids(response), [self.newer.id, self.app.id])
+
+    def test_bare_date_bounds_cover_the_whole_day(self):
+        # self.newer is at 09:00 on 10 Sep. A bare "before" date must not stop
+        # at that day's midnight, and a bare "after" date starts at it.
+        response = self.client.get("/api/applications?submitted_before=2026-09-10")
+        self.assertEqual(self.ids(response), [self.newer.id, self.app.id, self.older.id])
+        response = self.client.get("/api/applications?submitted_after=2026-09-10")
+        self.assertEqual(self.ids(response), [self.newer.id])
 
     def test_filter_stage(self):
         self.move("hired", app=self.newer)
@@ -358,6 +369,28 @@ class ListTests(ApiTestCase):
             response = self.client.get(f"/api/applications?page={page}")
             self.assertEqual(response.status_code, 400, page)
             self.assertEqual(response.json()["error"], "invalid_page", page)
+
+
+class AdminTests(APITestCase):
+    def test_add_form_issues_a_receipt_and_first_entry(self):
+        # receipt and stage are read-only on the form, so the admin must fill
+        # them in. Two adds used to collide on the empty receipt.
+        self.client.force_login(User.objects.create_superuser("admin", password="pw"))
+        form = {
+            "name": "By Hand", "email": "hand@example.com",
+            "resume_link": "https://x.io/r", "repository_link": "https://x.io/g",
+            "action_run_link": "https://x.io/a",
+            "submitted_at_0": "2026-09-01", "submitted_at_1": "10:00:00",
+            "stage_entries-TOTAL_FORMS": "0", "stage_entries-INITIAL_FORMS": "0",
+        }
+        for _ in range(2):
+            response = self.client.post("/admin/apply/application/add/", form)
+            self.assertEqual(response.status_code, 302, response.content[:300])
+        apps = Application.objects.filter(email="hand@example.com")
+        self.assertEqual(apps.count(), 2)
+        for app in apps:
+            self.assertTrue(app.receipt.startswith("thank-you-from-b12-"))
+            self.assertEqual(list(app.stage_entries.values_list("stage", flat=True)), ["new"])
 
 
 @override_settings(APPLICANT_SIGNING_SECRET=SECRET)

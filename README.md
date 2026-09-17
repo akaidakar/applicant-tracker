@@ -14,6 +14,15 @@ the real `/api/` requests and responses. The database holds 100 seeded
 applicants. Notes and stage changes you make stay there. The first request
 after a quiet spell takes a second while the function starts.
 
+"Test submission" in the top bar opens a page that does what the applicant's
+GitHub Action does: it signs a payload with HMAC-SHA256 in the browser and
+POSTs it to `/submission`. One button sends a valid submission and gets a
+receipt and a new row in the list. The others send a wrong secret, no
+signature, a missing field, and a body that isn't JSON, and each shows the
+gist's error code for it. The page needs the deployment's signing secret,
+shared with the login. It also prints the same request as a curl and openssl
+snippet for use outside the browser.
+
 ## Run it locally
 
 Backend (Python 3.11, Django 5.2, DRF 3.18):
@@ -42,7 +51,7 @@ http://localhost:5173/. The Vite dev server proxies `/api`, `/admin`, and
 Tests:
 
 ```sh
-python manage.py test apply     # 37 tests
+python manage.py test apply     # 40 tests
 cd frontend && npm run typecheck && npm run lint
 ```
 
@@ -61,8 +70,8 @@ Django doesn't own returns the React app's index.html.
 ## API
 
 All `/api/` routes require a logged-in session and answer JSON. Every stage in a
-response is an object `{"value": "hired", "label": "Hired"}`, so clients never
-hardcode labels. Errors from this app look like
+response is an object `{"value": "hired", "label": "Hired"}`, so clients don't
+need to hardcode labels for anything they display. Errors from this app look like
 `{"success": false, "error": "<code>", "message": "<text>"}`.
 
 | Method | Path | Purpose |
@@ -80,9 +89,11 @@ hardcode labels. Errors from this app look like
 GET /api/applications?email=&receipt=&stage=&submitted_after=&submitted_before=&page=&page_size=
 ```
 
-`email` and `receipt` match exactly, `stage` is one of the stage values. The
-date bounds are inclusive ISO 8601 datetimes. An unknown stage or an
-unparseable date returns 400 `invalid_filter`. Results are newest first, 20
+`receipt` matches exactly, `email` matches ignoring case, and `stage` is one
+of the stage values. The date bounds are inclusive ISO 8601 datetimes. A bare
+date such as `2026-09-17` means the whole day in UTC, so `submitted_before`
+includes it. An unknown stage or an unparseable date returns 400
+`invalid_filter`. Results are newest first, 20
 per page by default, 100 at most. Each row carries id, name, email,
 submitted_at, receipt, and stage.
 
@@ -177,15 +188,18 @@ groups them with no extra bookkeeping and a note taken at "New" stays under
 "New" after a move.
 
 `Application.stage` duplicates the latest entry on purpose. Stage checks and
-list filters read one column instead of a subquery, and every write to it
-happens in the same transaction as the new entry. The admin shows stage
-entries read-only, so the stage endpoint is the only writer and the two can't
-drift apart.
+list filters read one column instead of a subquery. `Application.enter_stage()`
+is the only code that writes the column, and it creates the entry in the same
+statement sequence. The submission endpoint, the stage endpoint, the admin's
+add form, the seed command, and the notes endpoint's fallback for a row with
+no entries all call it. The admin shows stage entries read-only, so nothing
+else can make the two drift apart.
 
-`email` and `submitted_at` are indexed because the list filters on them. A
-composite index on `(stage, -submitted_at, -id)` matches the list's stage
-filter and newest-first sort, so that query is one index scan with no sort
-step. `receipt` is unique, which also indexes it.
+Indexes match the list's queries. `(-submitted_at, -id)` is the unfiltered
+newest-first sort, `(stage, -submitted_at, -id)` is the same sort with the
+stage filter, and each is one index scan with no sort step. `email` has an
+index on `UPPER(email)`, which is what Postgres compiles the case-insensitive
+filter to. `receipt` is unique, which also indexes it.
 
 ## Decisions
 
@@ -243,7 +257,7 @@ and migrations run from a laptop against it.
 
 ```
 apply/
-  models.py          Application, StageEntry, Note, allowed_next_stages(), make_receipt()
+  models.py          Application (enter_stage), StageEntry, Note, allowed_next_stages(), make_receipt()
   serializers.py     list, detail, history, and input serializers
   views.py           submission view and the /api views
   api_urls.py        /api routes; urls.py keeps the gist's /submission
@@ -257,8 +271,9 @@ config/
   spa.py             serves the built React app for non-API routes
 frontend/src/
   api/               http.ts (fetch client), errors.ts, index.ts
-  pages/             ApplicationListPage, ApplicationDetailPage
-  stages.ts          stage list, mirrors models.py
+  pages/             ApplicationListPage, ApplicationDetailPage, SubmissionTestPage
+  signing.ts         canonical JSON and HMAC signing for the submission tester
+  stages.ts          stage list for the filter picker, the one copy of models.py's list on the client
 vercel.json          Vercel: static frontend plus a Django function
 .github/workflows/ci.yml   Django tests, frontend typecheck, lint, build
 ```

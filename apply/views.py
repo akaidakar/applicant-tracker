@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 import re
-from datetime import timezone
+from datetime import timedelta, timezone
 
 from django.conf import settings
 from django.db import transaction
@@ -16,7 +16,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Application, Stage, StageEntry, allowed_next_stages, make_receipt
+from .models import Application, Stage, allowed_next_stages, make_receipt
 from .serializers import (
     ApplicantSubmissionSerializer,
     ApplicationDetailSerializer,
@@ -132,7 +132,7 @@ class ApplicantSubmissionView(APIView):
                 receipt=make_receipt(),
                 stage=Stage.NEW,
             )
-            StageEntry.objects.create(application=application, stage=Stage.NEW)
+            application.enter_stage(Stage.NEW)
 
         return Response({"success": True, "receipt": application.receipt})
 
@@ -141,7 +141,18 @@ class ApplicantSubmissionView(APIView):
 # in settings.
 
 
-def parse_bound(params, name):
+STAGE_OPTIONS = f"stage must be one of: {', '.join(Stage.values)}."
+
+DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}$")
+
+
+def parse_bound(params, name, edge):
+    """An inclusive datetime bound from the query string, or None when absent.
+
+    A bare date means the whole day in UTC: the start of it for the lower
+    bound and the end of it for the upper bound, so `submitted_before=2026-09-17`
+    includes 17 September rather than stopping at its midnight.
+    """
     raw = params.get(name)
     if not raw:
         return None
@@ -150,9 +161,11 @@ def parse_bound(params, name):
     except ValueError:
         moment = None
     if moment is None:
-        raise BadRequest("invalid_filter", f"{name} must be an ISO 8601 datetime.")
+        raise BadRequest("invalid_filter", f"{name} must be an ISO 8601 date or datetime.")
     if dj_timezone.is_naive(moment):
         moment = dj_timezone.make_aware(moment, timezone.utc)
+    if edge == "end" and DATE_ONLY.match(raw):
+        moment = moment + timedelta(days=1, microseconds=-1)
     return moment
 
 
@@ -183,17 +196,18 @@ class ApplicationListView(ListAPIView):
         params = self.request.query_params
         queryset = Application.objects.order_by("-submitted_at", "-id")
         if email := params.get("email"):
-            queryset = queryset.filter(email=email)
+            # Case-insensitive: the address is typed by a recruiter, not copied.
+            queryset = queryset.filter(email__iexact=email)
         if receipt := params.get("receipt"):
             queryset = queryset.filter(receipt=receipt)
         if stage := params.get("stage"):
             if stage not in Stage.values:
-                raise BadRequest("invalid_filter", f"stage must be one of: {', '.join(Stage.values)}.")
+                raise BadRequest("invalid_filter", STAGE_OPTIONS)
             queryset = queryset.filter(stage=stage)
         # Both bounds are inclusive.
-        if after := parse_bound(params, "submitted_after"):
+        if after := parse_bound(params, "submitted_after", "start"):
             queryset = queryset.filter(submitted_at__gte=after)
-        if before := parse_bound(params, "submitted_before"):
+        if before := parse_bound(params, "submitted_before", "end"):
             queryset = queryset.filter(submitted_at__lte=before)
         return queryset
 
@@ -236,9 +250,7 @@ class StageChangeView(APIView):
     def post(self, request, pk):
         serializer = StageChangeSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response(
-                "invalid_stage", f"stage must be one of: {', '.join(Stage.values)}."
-            )
+            return error_response("invalid_stage", STAGE_OPTIONS)
         new_stage = serializer.validated_data["stage"]
 
         with transaction.atomic():
@@ -258,9 +270,7 @@ class StageChangeView(APIView):
                     )
                 return error_response("invalid_transition", message)
 
-            application.stage = new_stage
-            application.save(update_fields=["stage"])
-            StageEntry.objects.create(application=application, stage=new_stage)
+            application.enter_stage(new_stage)
             # Read back while the row is still locked, so the response shows
             # this move and not one a concurrent request made after it.
             fresh = with_history(Application.objects.all()).get(pk=pk)
