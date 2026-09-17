@@ -10,10 +10,18 @@ class NoteInline(admin.TabularInline):
 
 
 class StageEntryInline(admin.TabularInline):
+    """Read-only: the stage endpoint is the only writer, so Application.stage
+    and the entries can't drift apart."""
+
     model = StageEntry
     extra = 0
-    readonly_fields = ("entered_at",)
+    fields = ("stage", "entered_at")
+    readonly_fields = ("stage", "entered_at")
     show_change_link = True
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Application)
@@ -28,9 +36,15 @@ class ApplicationAdmin(admin.ModelAdmin):
 
 @admin.register(StageEntry)
 class StageEntryAdmin(admin.ModelAdmin):
+    """Exists so notes can be added to a past stage. The entry itself is read-only."""
+
     list_display = ("id", "application", "stage", "entered_at")
     list_filter = ("stage",)
+    readonly_fields = ("application", "stage", "entered_at")
     inlines = [NoteInline]
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(Note)

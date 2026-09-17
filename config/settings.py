@@ -135,3 +135,7 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
+
+# The React dev server proxies /api to Django. With changeOrigin, Django sees
+# Host localhost:8000 but Origin localhost:5173, so POSTs need this to pass CSRF.
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173"]

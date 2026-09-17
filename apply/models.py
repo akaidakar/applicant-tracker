@@ -14,6 +14,17 @@ STAGE_ORDER = list(Stage.values)
 TERMINAL = {Stage.HIRED, Stage.REJECTED}
 
 
+def allowed_next_stages(current):
+    """Stages an application may move to from `current`: any later stage, none from a terminal one.
+
+    The stage endpoint validates with this and the detail response lists it,
+    so the rule lives in one place.
+    """
+    if current in TERMINAL:
+        return []
+    return STAGE_ORDER[STAGE_ORDER.index(current) + 1:]
+
+
 class Application(models.Model):
     name = models.CharField(max_length=255)
     email = models.EmailField(db_index=True)
@@ -28,6 +39,18 @@ class Application(models.Model):
 
     def __str__(self):
         return f"{self.name} <{self.email}> ({self.receipt})"
+
+    def current_entry(self):
+        """The StageEntry for the current stage.
+
+        Every code path that sets `stage` also creates an entry, but a row made
+        by hand (admin, shell) may have none. Create it then, so a note always
+        has a stage to attach to.
+        """
+        entry = self.stage_entries.order_by("-entered_at", "-id").first()
+        if entry is None:
+            entry = self.stage_entries.create(stage=self.stage)
+        return entry
 
 
 class StageEntry(models.Model):
