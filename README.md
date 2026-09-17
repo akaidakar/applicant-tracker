@@ -288,7 +288,19 @@ for name in DJANGO_DEBUG DJANGO_ALLOWED_HOSTS CSRF_TRUSTED_ORIGINS \
   vercel env add $name production           # 0, .vercel.app, https://<project>.vercel.app, and three secrets
 done
 vercel env pull --environment production .env.production
-set -a; source .env.production; set +a
-python manage.py migrate && python manage.py ensure_reviewer && python manage.py seed_applications 100 --if-empty
+export DATABASE_URL="$(grep '^DATABASE_URL=' .env.production | cut -d= -f2- | tr -d '"')"
+python manage.py migrate
+REVIEWER_PASSWORD=<the one you set> python manage.py ensure_reviewer
+python manage.py seed_applications 100 --if-empty
 vercel deploy --prod
+```
+
+Vercel marks the secrets as sensitive, so `env pull` writes a placeholder for
+them, and only `DATABASE_URL` comes through. The management commands run with
+Django's local defaults and that one variable. If libpq reports "certificate
+verify failed", a stray `~/.postgresql/root.crt` is being used to verify Neon.
+Point it at the real bundle instead:
+
+```sh
+export DATABASE_URL="${DATABASE_URL/sslmode=require/sslmode=verify-full}&sslrootcert=/etc/ssl/cert.pem"
 ```
