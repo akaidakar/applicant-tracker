@@ -8,5 +8,3 @@ frontend/node_modules
 frontend/dist
 .github
 .playwright-mcp
-Dockerfile
-fly.toml

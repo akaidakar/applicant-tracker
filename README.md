@@ -46,7 +46,7 @@ python manage.py test apply     # 37 tests
 cd frontend && npm run typecheck && npm run lint
 ```
 
-Production-style, the way the container runs it:
+Production-style, with the built frontend served by Django:
 
 ```sh
 cd frontend && npm run build && cd ..
@@ -233,13 +233,11 @@ picker applies at once; the other filters apply on submit. Date filters send
 the start and end of the chosen day in the browser's zone, so "before 17 Sep"
 still includes 17 September.
 
-**Deployment.** Two targets share the same code. On Vercel (`vercel.json`)
-the frontend is static and Django runs as a function. Vercel serves the
-built files itself, routes `/api`, `/admin`, `/static`, and `/submission` to
-Django, and every other path to the React app. A function has no disk, so
-`DATABASE_URL` points at Neon Postgres, and migrations run from a laptop
-against it. On Fly (`Dockerfile`, `fly.toml`) one machine runs gunicorn with
-SQLite on a volume and migrates and seeds itself on start.
+**Deployment.** On Vercel (`vercel.json`) the frontend is static and Django
+runs as a function. Vercel serves the built files itself, routes `/api`,
+`/admin`, `/static`, and `/submission` to Django, and every other path to the
+React app. A function has no disk, so `DATABASE_URL` points at Neon Postgres,
+and migrations run from a laptop against it.
 
 ## Layout
 
@@ -262,7 +260,6 @@ frontend/src/
   pages/             ApplicationListPage, ApplicationDetailPage
   stages.ts          stage list, mirrors models.py
 vercel.json          Vercel: static frontend plus a Django function
-Dockerfile, fly.toml Fly.io: one container with SQLite on a volume
 .github/workflows/ci.yml   Django tests, frontend typecheck, lint, build
 ```
 
@@ -279,12 +276,4 @@ vercel env pull --environment production .env.production
 set -a; source .env.production; set +a
 python manage.py migrate && python manage.py ensure_reviewer && python manage.py seed_applications 100 --if-empty
 vercel deploy --prod
-```
-
-Deploy to Fly:
-
-```sh
-fly launch --no-deploy --copy-config --yes   # first time only, creates the app and volume
-fly secrets set DJANGO_SECRET_KEY=... APPLICANT_SIGNING_SECRET=... REVIEWER_PASSWORD=...
-fly deploy
 ```

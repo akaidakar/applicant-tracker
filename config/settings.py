@@ -118,7 +118,6 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            # On Fly the volume is mounted at /data so the data outlives deploys.
             "NAME": os.environ.get("DATABASE_PATH", BASE_DIR / "db.sqlite3"),
             # SQLite ignores select_for_update(). With the default deferred
             # transaction two gunicorn workers can both read the old stage and
@@ -205,9 +204,9 @@ CSRF_TRUSTED_ORIGINS = ["http://localhost:5173"] + [
 ]
 
 if not DEBUG:
-    # Fly terminates TLS and forwards the scheme in this header.
+    # Vercel terminates TLS and forwards the scheme in this header.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    # Both hosts only serve HTTPS. A short max-age keeps a mistake recoverable.
+    # Vercel only serves HTTPS. A short max-age keeps a mistake recoverable.
     SECURE_HSTS_SECONDS = 3600
